@@ -1,0 +1,10 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dummy-cm
+data:
+  key1: value1-c
+  key2: value2-c
+  key3: value3-c
+  key4: value4

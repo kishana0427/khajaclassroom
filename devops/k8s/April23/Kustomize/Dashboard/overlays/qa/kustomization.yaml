@@ -1,0 +1,10 @@
+---
+resources:
+  - ../../base
+
+namespace: qa
+namePrefix: qa-
+labels:
+  - pairs:
+      env: qa
+      version: "0.0.1"
