@@ -1,0 +1,43 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testapp-deploy
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: testapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 50%
+      maxUnavailable: 50%
+  minReadySeconds: 60
+  template: 
+    metadata:
+      labels:
+        app: testapp
+        ver: 1.0.1
+    spec:
+      containers:
+        - name: testapp
+          image: shaikkhajaibrahim/testapp:1.0.1
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            timeoutSeconds: 2
+            periodSeconds: 15
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 10
+            successThreshold: 3
+            failureThreshold: 3

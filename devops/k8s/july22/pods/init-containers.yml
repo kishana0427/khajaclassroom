@@ -1,0 +1,18 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-containers
+spec:
+  containers:
+    - name: jenkins
+      image: jenkins/jenkins:latest
+      ports:
+        - containerPort: 8080
+  initContainers:
+    - name: init-api-service
+      image: alpine:3
+      command: ["sleep", "30s"]
+    - name: init-db-service
+      image: alpine:3
+      command: ["sleep", "30s"]
