@@ -1,0 +1,303 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "0.0.0.0",
+    "parameters": {
+        "vnetAddressSpace": {
+            "type": "string",
+            "metadata": {
+                "description": "vnet address space"
+            },
+            "defaultValue": "192.168.0.0/16"
+        },
+        "location": {
+            "type": "string",
+            "metadata": {
+                "description": "Region to create resources"
+            },
+            "defaultValue": "[resourceGroup().location]"
+        },
+        "subnetCidrRanges": {
+            "type": "array",
+            "metadata": {
+                "description": "subnet cidr ranges"
+            },
+            "defaultValue": [ "192.168.0.0/24", "192.168.1.0/24", "192.168.2.0/24", "192.168.3.0/24" ]
+        },
+        "adminUserName": {
+            "type": "string",
+            "metadata": {
+                "description": "UserName"
+            }
+        },
+        "adminPassword": {
+            "type": "string",
+            "metadata": {
+                "description": "Password"
+            }
+        },
+        "vmSize": {
+            "type": "string",
+            "metadata": {
+                "description": "Size of VM"
+            },
+            "defaultValue": "Standard_B1s"
+        },
+        "startIp": {
+            "type": "string",
+            "metadata": {
+                "description": "This is start ip range for firewall"
+            },
+            "defaultValue": "192.168.0.0"
+        },
+        "endIp": {
+            "type": "string",
+            "metadata": {
+                "description": "This is start ip range for firewall"
+            },
+            "defaultValue": "192.168.255.255"
+        }
+    },
+    "variables": {
+        "networkName": "ntier",
+        "subnetNames": [ "web1", "web2", "db1", "db2" ],
+        "publicip": "webpublicip",
+        "nsgWeb": "webnsg",
+        "nicWeb": "webnic",
+        "vmWeb1Name": "web1vm"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('networkName')]",
+            "location": "[parameters('location')]",
+            "tags": {
+                "Env": "Development",
+                "CreatedBy": "ARM"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [ "[parameters('vnetAddressSpace')]" ]
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-11-01",
+            "name": "[concat(variables('networkName'), '/', variables('subnetNames')[copyIndex()])]",
+            "properties": {
+                "addressPrefix": "[parameters('subnetCidrRanges')[copyIndex()]]",
+                "serviceEndpoints": [
+                    {
+                        "locations": ["[resourceGroup().location]"],
+                        "service": "Microsoft.Sql"
+                    }
+                ]
+            },
+            // adding explicit dependency on virtual network i.e. subnet wil not be 
+            //created until virtual network is ready
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks',variables('networkName'))]"
+            ],
+            "copy": {
+                "name": "subnet copy",
+                "count": 4,
+                "mode": "Serial"
+            }
+
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2020-11-01",
+            "name": "[variables('nsgWeb')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "Env": "Development",
+                "CreatedBy": "ARM"
+            },
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "openssh",
+                        "properties": {
+                            "priority": 300,
+                            "description": "open ssh for everyone",
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "22",
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "openhttp",
+                        "properties": {
+                            "priority": 310,
+                            "description": "open http for everyone",
+                            "protocol": "Tcp",
+                            "access": "Allow",
+                            "sourceAddressPrefix": "*",
+                            "sourcePortRange": "*",
+                            "destinationAddressPrefix": "*",
+                            "destinationPortRange": "80",
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('publicip')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('publicip')]",
+                "Env": "Development",
+                "CreatedBy": "ARM"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic",
+                "dnsSettings": {
+                    "domainNameLabel": "qtazure"
+                }
+            }
+        },
+        {
+            "name": "[variables('nicWeb')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('nicWeb')]",
+                "Env": "Development",
+                "CreatedBy": "ARM"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('networkName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgWeb'))]",
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicip'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('networkName'), variables('subnetNames')[0])]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicip'))]"
+                            }
+
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgWeb'))]"
+                }
+            }
+        },
+        {
+            "name": "[variables('vmWeb1Name')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-03-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('nicWeb'))]"
+            ],
+            "tags": {
+                "displayName": "[variables('vmWeb1Name')]",
+                "Env": "Development",
+                "CreatedBy": "ARM"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSize')]"
+                },
+                "osProfile": {
+                    "computerName": "[variables('vmWeb1Name')]",
+                    "adminUsername": "[parameters('adminUserName')]",
+                    "adminPassword": "[parameters('adminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "0001-com-ubuntu-server-focal",
+                        "sku": "20_04-lts-gen2",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "createOption": "FromImage",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicWeb'))]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "qtsqlsrvarm",
+            "type": "Microsoft.Sql/servers",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "qtsqlsrvarm"
+            },
+            "properties": {
+                "administratorLogin": "qtdevops",
+                "administratorLoginPassword": "motherindia@123"
+            },
+            "resources": [
+                {
+                    "type": "firewallRules",
+                    "apiVersion": "2014-04-01",
+                    "dependsOn": [
+                        "[resourceId('Microsoft.Sql/servers', 'qtsqlsrvarm')]"
+                    ],
+                    "location": "[resourceGroup().location]",
+                    "name": "AllowAllVNetIps",
+                    "properties": {
+                        "startIpAddress": "[parameters('startIp')]",
+                        "endIpAddress": "[parameters('endIp')]"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "qtsqlsrvarm/qtecommerce",
+            "type": "Microsoft.Sql/servers/databases",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "qtecommerce"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', 'qtsqlsrvarm')]"
+            ],
+            "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "edition": "Basic",
+                "maxSizeBytes": "1073741824",
+                "requestedServiceObjectiveName": "Basic",
+                "sampleName": "AdventureWorksLT"
+            }
+        }
+    ],
+    "outputs": {
+        "publicip": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('publicip'))).dnsSettings.fqdn]"
+        }
+    }
+}

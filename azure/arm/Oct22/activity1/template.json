@@ -1,0 +1,60 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "0.0.0.1",
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "name": "ntier",
+            "location": "East US",
+            "tags": {
+                "env": "dev",
+                "project": "azurelearning"
+            },
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": ["192.168.0.0/16"]
+                }
+
+            }
+
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-11-01",
+            "name": "ntier/web",
+            "properties": {
+                "addressPrefix": "192.168.0.0/24"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-11-01",
+            "name": "ntier/app",
+            "properties": {
+                "addressPrefix": "192.168.1.0/24"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets','ntier','web')]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2020-11-01",
+            "name": "ntier/db",
+            "properties": {
+                "addressPrefix": "192.168.2.0/24"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets','ntier','app')]"
+            ]
+        }
+
+    ]
+
+}

@@ -1,0 +1,252 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "0.0.0.1",
+    "parameters": {
+        "ntiervnetconfig": {
+            "type": "object",
+            "metadata": {
+                "description": "Enter the networ configuration values"
+            },
+            "defaultValue": {
+                "name": "ntier",
+                "addressrange": "192.168.0.0/16",
+                "subnetnames": [ "appgateway", "management", "web", "business", "data", "ad" ],
+                "subnetranges": [ "192.168.0.0/24", "192.168.1.0/24", "192.168.2.0/24", "192.168.3.0/24", "192.168.4.0/24", "192.168.5.0/24" ],
+                "nsgs": [
+                    {
+                        "name": "appgnsg",
+                        "portranges": [ "80", "443" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "*"
+                    },
+                    {
+                        "name": "mgmtnsg",
+                        "portranges": [ "3389", "22" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "*"
+                    },
+                    {
+                        "name": "webnsg",
+                        "portranges": [ "80", "443" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "*"
+                    },
+                    {
+                        "name": "businessnsg",
+                        "portranges": [ "8080" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "192.168.0.0/16"
+                    },
+                    {
+                        "name": "datansg",
+                        "portranges": [ "1433", "1432" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "192.168.0.0/16"
+                    },
+                    {
+                        "name": "adnsg",
+                        "portranges": [ "80", "443" ],
+                        "priority": 300,
+                        "sourceAddressPrefix": "*"
+                    }
+
+                ]
+            }
+        }
+    },
+    "variables": {
+        "networkapiversion": "2020-05-01",
+        "mgmtsubnetname": "[parameters('ntiervnetconfig').subnetnames[1]]"
+    },
+    "resources": [
+        {
+            "name": "[parameters('ntiervnetconfig').name]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "[variables('networkapiversion')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [ "[parameters('ntiervnetconfig').addressrange]" ]
+                }
+            }
+        },
+        {
+            "name": "[concat(parameters('ntiervnetconfig').name,'/', parameters('ntiervnetconfig').subnetnames[copyIndex()])]",
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "[variables('networkapiversion')]",
+            "properties": {
+                "addressPrefix": "[parameters('ntiervnetconfig').subnetranges[copyIndex()]]",
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('ntiervnetconfig').nsgs[copyIndex()].name)]"
+                }
+            },
+            "copy": {
+                "name": "subnetcopy",
+                "count": "[length(parameters('ntiervnetconfig').subnetnames)]",
+                "mode": "Serial"
+            },
+            "dependsOn": [
+                "[parameters('ntiervnetconfig').name]",
+                "[parameters('ntiervnetconfig').nsgs[copyIndex()].name]"
+            ]
+        },
+        {
+            "name": "[parameters('ntiervnetconfig').nsgs[copyIndex()].name]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "[variables('networkapiversion')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "[concat('nsg',parameters('ntiervnetconfig').nsgs[copyIndex()].name)]",
+                        "properties": {
+                            "description": "rule for subnet",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRanges": "[parameters('ntiervnetconfig').nsgs[copyIndex()].portranges]",
+                            "sourceAddressPrefix": "[parameters('ntiervnetconfig').nsgs[copyIndex()].sourceAddressPrefix]",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": "[parameters('ntiervnetconfig').nsgs[copyIndex()].priority]",
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            },
+            "copy": {
+                "name": "nsgcopy",
+                "count": "[length(parameters('ntiervnetconfig').nsgs)]",
+                "mode": "Serial"
+
+            }
+        },
+        {
+            "name": "mgmtpublicip",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "[variables('networkapiversion')]",
+            "location": "[resourceGroup().location]",
+            "comments": "Public IP for your Management VM",
+            "properties": {
+                "publicIPAllocationMethod": "Dynamic"
+            },
+            "dependsOn": [
+                "[parameters('ntiervnetconfig').name]",
+                "[parameters('ntiervnetconfig').nsgs[4].name]"
+            ]
+        },
+        {
+            "name": "managementnic",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "[variables('networkapiversion')]",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "mgmtnic"
+            },
+
+            "properties": {
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('ntiervnetconfig').nsgs[1].name)]"
+                },
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('ntiervnetconfig').name, variables('mgmtsubnetname'))]"
+                            },
+                            "publicIpAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIpAddresses', 'mgmtpublicip')]"
+                            }
+                        }
+                    }
+                ]
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('ntiervnetconfig').name)]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', parameters('ntiervnetconfig').nsgs[1].name)]",
+                "[resourceId('Microsoft.Network/publicIpAddresses', 'mgmtpublicip')]"
+            ]
+        },
+        {
+            "name": "ltarmstorage",
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-06-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "lthrms Storage Account"
+            },
+            "sku": {
+                "name": "Standard_LRS"
+            },
+            "kind": "Storage",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', parameters('ntiervnetconfig').name)]"
+            ]
+        },
+        {
+            "name": "mgmtjumpbox",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2019-07-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "mgmt jumpbox"
+            },
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "Standard_B1s"
+                },
+                "osProfile": {
+                    "computerName": "mgmtjumpbox",
+                    "adminUsername": "qtdevops",
+                    "adminPassword": "motherindia@123"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "18.04-LTS",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "mgmtjbox-OSDisk",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', 'managementnic')]"
+                        }
+                    ]
+                },
+                "diagnosticsProfile": {
+                    "bootDiagnostics": {
+                        "enabled": true,
+                        "storageUri": "[reference(resourceId('Microsoft.Storage/storageAccounts/', toLower('ltarmstorage'))).primaryEndpoints.blob]"
+                    }
+                }
+
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/', toLower('ltarmstorage'))]",
+                "[resourceId('Microsoft.Network/networkInterfaces', 'managementnic')]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('ntiervnetconfig').name, variables('mgmtsubnetname'))]"
+            ]
+
+
+        }
+    ],
+    "outputs": {
+        "ipaddress": {
+            "type": "object",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses', 'mgmtpublicip'))]"
+        },
+        "vm": {
+            "type": "object",
+            "value": "[reference(resourceId('Microsoft.Compute/virtualMachines','mgmtjumpbox'), '2019-07-01','Full')]"
+        }
+    }
+
+}
