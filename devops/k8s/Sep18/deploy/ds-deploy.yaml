@@ -1,0 +1,51 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ds-deploy
+  namespace: prod
+  annotations:
+    kubernetes.io/change-cause: "image updated to v2.0"
+spec:
+  minReadySeconds: 1
+  replicas: 10
+  selector:
+    matchLabels:
+      app: web
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 30%
+      maxUnavailable: 20%
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: deploysample
+          image: shaikkhajaibrahim/deploy-sample:v2.0
+          ports:
+            - name: webport
+              containerPort: 80
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /
+              port: webport
+            failureThreshold: 3
+            periodSeconds: 1
+            successThreshold: 1
+          readinessProbe:
+            httpGet:
+              path: /
+              port: webport
+            failureThreshold: 2
+            periodSeconds: 2
+            successThreshold: 2
