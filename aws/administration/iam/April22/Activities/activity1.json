@@ -1,0 +1,31 @@
+{
+	"Version": "2012-10-17",
+	"Statement": [
+		{
+			"Effect": "Allow", 
+			"Action":  [
+                "s3:*" 
+            ],     
+			"Resource": "*"
+		},
+        {
+			"Effect": "Allow", 
+			"Action":  [
+                "ec2:*" ,
+                "autoscaling:*",
+                "imagebuilder:*",
+                "ec2-instance-connect:*"
+
+            ],     
+			"Resource": "*"
+		},
+		{
+			"Effect": "Deny",
+			"Action": [
+				"s3:DeleteBucket",
+				"ec2:TerminateInstances"
+			],
+			"Resource": "*"
+		}
+	]
+}
