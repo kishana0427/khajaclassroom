@@ -1,0 +1,48 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "ntier",
+            "apiVersion": "2021-08-01",
+            "location": "centralus",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": ["10.10.0.0/16"]
+                }
+            
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2021-08-01",
+            "name": "ntier/web",
+            "properties": {
+                "addressPrefix": "10.10.0.0/24"
+            },
+            "dependsOn": ["[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]"]
+            
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2021-08-01",
+            "name": "ntier/business",
+            "properties": {
+                "addressPrefix": "10.10.1.0/24"
+            },
+            "dependsOn": ["[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]"]
+
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2021-08-01",
+            "name": "ntier/db",
+            "properties": {
+                "addressPrefix": "10.10.2.0/24"
+            },
+            "dependsOn": ["[resourceId('Microsoft.Network/virtualNetworks', 'ntier')]"]
+        }
+    ]
+    
+}

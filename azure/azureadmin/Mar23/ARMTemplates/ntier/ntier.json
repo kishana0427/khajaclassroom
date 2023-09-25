@@ -1,0 +1,288 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "vnetAddressSpace": {
+            "type": "string",
+            "metadata": {
+                "description": "addressSpace of vnet"
+            },
+            "defaultValue": "192.168.0.0/16"
+        },
+        "subnetNames": {
+            "type": "array",
+            "metadata": {
+                "description": "names of the subnets"
+            },
+            "defaultValue": [ "web", "app", "db" ]
+        },
+        "subnetAddressSpace": {
+            "type": "array",
+            "metadata": {
+                "description": "address Spaces of the subnets"
+            },
+            "defaultValue": [ "192.168.0.0/24", "192.168.1.0/24", "192.168.2.0/24" ]
+        },
+        "dbusername": {
+            "type": "string",
+            "metadata": {
+                "description": "username for database"
+            },
+            "defaultValue": "admin"
+        },
+        "dbpassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "password for database"
+            }
+        },
+        "websubnetname": {
+            "type": "string",
+            "metadata": {
+                "description": "name of the subnet in which you want to create vm"
+            },
+            "defaultValue": "web"
+        },
+        "installscript": {
+            "type": "array",
+            "metadata": {
+                "description": "script"
+            },
+            "defaultValue": ["#!/bin/bash", "sudo apt update", "sudo apt install apache2 -y"]
+        }
+    },
+    "variables": {
+        "vnet-name": "ntier-vnet",
+        "server-name": "qtntiersrv",
+        "db-name": "employees",
+        "sqlserver-id": "[resourceId('Microsoft.Sql/servers', variables('server-name'))]",
+        "vnet-id": "[resourceId('Microsoft.Network/virtualNetworks', variables('vnet-name'))]",
+        "nsg-name": "webnsg",
+        "nic-name": "webnic",
+        "pip-name": "webip"
+
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2022-07-01",
+            "name": "[variables('vnet-name')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [ "[parameters('vnetAddressSpace')]" ]
+                }
+            },
+            "tags": {
+                "Env": "Dev",
+                "CreatedBy": "ARM Templates"
+            }
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2022-07-01",
+            "name": "[concat(variables('vnet-name'),'/',parameters('subnetNames')[copyIndex()])]",
+            "properties": {
+                "addressPrefix": "[parameters('subnetAddressSpace')[copyIndex()]]"
+            },
+            "copy": {
+                "name": "subnetcopy",
+                "count": "[length(parameters('subnetNames'))]",
+                "mode": "Serial"
+            },
+            "dependsOn": [
+                "[variables('vnet-id')]"
+            ]
+
+        },
+        {
+            "name": "[variables('server-name')]",
+            "type": "Microsoft.Sql/servers",
+            "apiVersion": "2021-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('server-name')]"
+            },
+            "properties": {
+                "administratorLogin": "[parameters('dbusername')]",
+                "administratorLoginPassword": "[parameters('dbpassword')]"
+            },
+            "resources": [
+                {
+                    "type": "firewallRules",
+                    "apiVersion": "2021-11-01",
+                    "dependsOn": [
+                        "[variables('sqlserver-id')]"
+                    ],
+                    "location": "[resourceGroup().location]",
+                    "name": "AllowAllWindowsAzureIps",
+                    "properties": {
+                        "startIpAddress": "0.0.0.0",
+                        "endIpAddress": "0.0.0.0"
+                    }
+                }
+            ],
+            "dependsOn": [
+                "[variables('vnet-id')]"
+            ]
+        },
+        {
+            "name": "[concat(variables('server-name'),'/',variables('db-name'))]",
+            "type": "Microsoft.Sql/servers/databases",
+            "apiVersion": "2021-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('db-name')]"
+            },
+            "dependsOn": [
+                "[variables('sqlserver-id')]"
+            ],
+            "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "edition": "Basic",
+                "requestedServiceObjectiveName": "Basic"
+            }
+        },
+        {
+            "name": "[variables('nsg-name')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2022-09-01",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "ssh",
+                        "properties": {
+                            "description": "description",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1000,
+                            "direction": "Inbound"
+                        }
+                    },
+                    {
+                        "name": "http",
+                        "properties": {
+                            "description": "description",
+                            "protocol": "Tcp",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "80",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 1010,
+                            "direction": "Inbound"
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[variables('nic-name')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2022-09-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('nic-name')]"
+            },
+            "dependsOn": [
+                "[variables('vnet-id')]",                
+                "[resourceId('Microsoft.Network/publicIPAddresses',variables('pip-name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg-name'))]"
+
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipConfig1",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnet-name'), parameters('websubnetname'))]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('pip-name'))]"
+                            }
+
+                        }
+                    }
+                ],
+                "networkSecurityGroup": {
+                    "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsg-name'))]"
+                }
+            }
+        },
+        {
+            "name": "[variables('pip-name')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2022-09-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "web ip address"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Static"
+
+            }
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2022-11-01",
+            "name": "webvm",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "Env": "dev",
+                "CreatedBy": "ARM"
+            },
+            "dependsOn":[
+                "[resourceId('Microsoft.Network/networkInterfaces',variables('nic-name'))]",
+                "[variables('vnet-id')]",
+                "[resourceId('Microsoft.Network/publicIPAddresses',variables('pip-name'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups',variables('nsg-name'))]"
+            ],
+            "properties": {
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces',variables('nic-name'))]"
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "webvm",
+                    "adminPassword": "[parameters('dbpassword')]",
+                    "adminUsername": "[parameters('dbusername')]",
+                    "linuxConfiguration": {
+                        "disablePasswordAuthentication": false
+
+                    }
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "0001-com-ubuntu-server-jammy",
+                        "sku": "22_04-lts-gen2",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "createOption": "fromImage"
+                    }
+                },
+                "hardwareProfile": {
+                    "vmSize": "Standard_B1ms"
+                },
+                "userData": "[base64(join(parameters('installscript'),'\n'))]"
+            }
+        }
+    ],
+    "outputs":{
+        "webip": {
+            "type": "string",
+            "value": "[reference(resourceId('Microsoft.Network/publicIPAddresses',variables('pip-name'))).ipAddress]"
+        }
+    }
+}
