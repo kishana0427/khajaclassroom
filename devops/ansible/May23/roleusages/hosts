@@ -1,0 +1,3 @@
+[tomcat]
+node1 ansible_host=172.31.27.136
+node2 ansible_host=172.31.23.22
